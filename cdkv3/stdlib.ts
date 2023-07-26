@@ -68,7 +68,6 @@ export class BucketPolicy extends Resource implements ILinkable {
   public static AutomaticBucketName() {
     return new LinkingTweak('AWS::S3::BucketPolicy', (pol: BucketPolicy) => {
       pol.makeLinkableTo(['AWS::S3::Bucket'], (buck: Bucket) => {
-        console.log('umm');
         BucketPolicy.Bucket(buck).linkTo(pol);
       });
     });

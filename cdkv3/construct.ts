@@ -46,7 +46,7 @@ export class Construct implements ILinkable {
   }
 
   public linkTo(target: Construct): void {
-    for (const type of target.linksTo) {
+    for (const type of target.linksAs) {
       for (const fn of this.linkHandlers[type] ?? []) {
         fn(target, this);
       }
