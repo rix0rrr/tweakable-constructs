@@ -1,0 +1,11 @@
+{
+    "demo": {
+        "url": "demo.html",
+        "dependencies": [
+            "cdkv3"
+        ]
+    },
+    "cdkv3": {
+        "dependencies": []
+    }
+}

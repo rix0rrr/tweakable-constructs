@@ -1,7 +1,29 @@
+//#region -c imports
 import { Bucket, BucketPolicy, Construct, ILinkable, PolicyStatement, Resource, Root, Scope } from "./cdkv3";
+//#endregion
 
 /**
- * app1: create a bucket with no properties, set all properties via tweaks
+ * # Introduction
+ * 
+ * A different way of initializing constructs that combines setting resource properties
+ * via values passed at resource construction time, and "modifiers" passed to constructs
+ * that set properties after initial creation.
+ * 
+ * While the set of "initial properties" is the L1 set and cannot be extended by customer
+ * code, the set of "modifiers" can be arbitrary extended, and higher-level modifiers
+ * can be written.
+ * 
+ * ## Terminology
+ * 
+ * I haven't completely settled on terminology here. *Modifiers* are also alternatingly
+ * called *tweaks* and *linkables* as well.
+ */
+
+/**
+ * 
+ * ## App1
+ * 
+ * This creates a bucket without any properties. All properties are set via "modifiers".
  * 
  * The BucketPolicy is implicitly linked.
  */

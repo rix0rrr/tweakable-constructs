@@ -1,0 +1,10 @@
+{
+    "updateToc": true,
+    "projectName": "tweakable-constructs",
+    "exclude": [
+        "cdkv3/*",
+	    "test/*",
+        ".git",
+        "node_modules"
+    ]
+}
