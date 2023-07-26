@@ -6,5 +6,9 @@
 	    "test/*",
         ".git",
         "node_modules"
-    ]
+    ],
+    "frontMatter": {
+        "projectName": "tweakable-constructs",
+        "repository": "http://github.com/rix0rrr/tweakable-constructs"
+    }
 }
