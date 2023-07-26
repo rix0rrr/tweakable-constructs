@@ -227,6 +227,14 @@ function app2() {
 /**
  * 
  * ## App3 - abstraction
+ * 
+ * In this example, we're defining a compound resource: a Bucket with a Policy.
+ * 
+ * Modifications apply to all constructs in a subtree, so as long as the compound
+ * resources are nested together, it will transparently apply tweaks wherever they
+ * make sense. (We could also achieve the same result by combining the `Bucket`
+ * and `BucketPolicy` into a parent construct, but that would change logical IDs
+ * and mess with the equivalence tests at the bottom of this file.)
  */
 
 function fancyBucket(scope: Construct, id: string, tweaks?: ILinkable[]) {
@@ -239,14 +247,16 @@ function fancyBucket(scope: Construct, id: string, tweaks?: ILinkable[]) {
     // would apply to both (except perhaps explicit nesting).
     // 
     // This requires cognitive overhead and is a bit nasty.
-    new BucketPolicy(Scope.FLOATING, 'BucketPolicy'),
+    new BucketPolicy(Scope.FLOATING, 'BucketPolicy', {}, [
+      BucketPolicy.AutomaticBucketName()
+    ]),
 
     ...tweaks ?? [],
   ]);
 }
 
 /**
- * app4: A function that returns "a bucket with an associated policy" that can be tweaked
+ * app3: A function that returns "a bucket with an associated policy" that can be tweaked
  */
 function app3() {
   return Root.with(root => 
@@ -259,7 +269,7 @@ function app3() {
 }
 
 /**
- * app5: Use 'fancyBucket' but use an explicit link operation
+ * app4: Use 'fancyBucket' but use an explicit link operation
  */
 function app4() {
   return Root.with(root => {
