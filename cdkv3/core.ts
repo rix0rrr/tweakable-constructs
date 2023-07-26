@@ -1,4 +1,5 @@
 import { Construct, StackTrace, ILinkable, Linkable } from "./construct";
+import { deepResolve, tokenToString } from "./tokens";
 
 //////////////////////////////////////////////////////////////////////
 // RESOURCE
@@ -30,11 +31,11 @@ export class Resource extends Construct {
     for (const r of res) {
       Object.assign(ret, r.render());
     }
-    return ret;
+
+    return deepResolve(ret);
   }
 
   private readonly properties: Record<string, Property> = {};
-  private readonly links: LinkRelationship[] = [];
 
   constructor(scope: Construct, id: string, public readonly resourceType: string) {
     super(scope, id);
@@ -52,8 +53,10 @@ export class Resource extends Construct {
     this.properties[name] = prop;
   }
 
-  protected addLink(link: LinkRelationship): LinkRelationship {
-    this.links.push(link);
+  protected addLinkableSlot(link: LinkableSlot): LinkableSlot {
+    this.makeLinkableTo(link.targets, (target) => {
+      link.set(target);
+    });
     return link;
   }
 
@@ -74,16 +77,7 @@ export class Resource extends Construct {
   }
 
   public get ref() {
-    return { Ref: this.logicalId };
-  }
-
-  public linkTo(target: Construct): void {
-    // Automatically link all Links on this Resource
-    for (const link of this.links) {
-      if (link.targets.some(l => target.linkableTargets.includes(l))) {
-        link.set(target);
-      }
-    }
+    return tokenToString({ Ref: this.logicalId });
   }
 }
 
@@ -175,7 +169,7 @@ export class CollectionProperty extends Property {
 /**
  * An object that represents a link to a construct
  */
-export class LinkRelationship extends Observable {
+export class LinkableSlot extends Observable {
   private _value: Construct | undefined;
   public changeTrace?: StackTrace;
 
@@ -227,7 +221,7 @@ export class ScalarTweak implements ILinkable {
   constructor(public readonly resourceType: string, public readonly property: string, public readonly value: any) {
   }
 
-  public get linkTargets() {
+  public get linksTo() {
     return [this.resourceType];
   }
 
@@ -257,7 +251,7 @@ export class CollectionTweak implements ILinkable {
   constructor(public readonly resourceType: string, public readonly collection: string, public readonly value: any) {
   }
 
-  public get linkTargets() {
+  public get linksTo() {
     return [this.resourceType];
   }
 
@@ -275,6 +269,26 @@ export class CollectionTweak implements ILinkable {
 
   public toString() {
     return `${this.constructor.name}(${JSON.stringify(this.resourceType)}, ${JSON.stringify(this.collection)}, ${JSON.stringify(this.value)})`;
+  }
+}
+
+export class LinkingTweak implements ILinkable {
+  public readonly linksTo: string[] = [];
+  private left?: any;
+  private fired = false;
+
+  constructor(
+    private readonly leftTarget: string,
+    private readonly onlink: (left: any) => void) {
+
+    this.linksTo.push(leftTarget);
+  }
+
+  public linkTo(target: Construct): void {
+    if (!this.fired && target.linksAs.includes(this.leftTarget)) {
+      this.left = target;
+      this.onlink(this.left);
+    }
   }
 }
 

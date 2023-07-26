@@ -1,5 +1,5 @@
 import { Construct, ILinkable, Linkable } from "./construct";
-import { DerivedProperty, LinkRelationship, CollectionProperty, CollectionTweak, Resource, ScalarProperty, ScalarTweak, IRenderable } from "./core";
+import { DerivedProperty, LinkableSlot, CollectionProperty, CollectionTweak, Resource, ScalarProperty, ScalarTweak, IRenderable, LinkingTweak } from "./core";
 
 //////////////////////////////////////////////////////////////////////
 // BUCKET
@@ -29,7 +29,7 @@ export class Bucket extends Resource {
   constructor(scope: Construct, id: string, props?: BucketProps, linkables?: ILinkable[]) {
     super(scope, id, 'AWS::S3::Bucket');
 
-    this.makeLinkable('AWS::S3::Bucket');
+    this.makeLinkableAs('AWS::S3::Bucket');
     this.addProperty('BucketName', new ScalarProperty());
     this.addProperty('LoggingConfiguration', new ScalarProperty());
     this.addProperty('Tags', new CollectionProperty());
@@ -53,20 +53,35 @@ export namespace Bucket {
 // BUCKETPOLICY
 
 export interface BucketPolicyProps {
-  readonly bucket?: Bucket;
+  readonly bucketName?: string;
 }
 
 export class BucketPolicy extends Resource implements ILinkable {
-  public readonly linkTargets: string[] = ['AWS::S3::Bucket'];
+  public static BucketName(bucketName: string) {
+    return new ScalarTweak('AWS::S3::BucketPolicy', 'BucketName', bucketName);
+  }
+
+  public static Bucket(bucket: Bucket) {
+    return new ScalarTweak('AWS::S3::BucketPolicy', 'BucketName', bucket.ref);
+  }
+
+  public static AutomaticBucketName() {
+    return new LinkingTweak('AWS::S3::BucketPolicy', (pol: BucketPolicy) => {
+      pol.makeLinkableTo(['AWS::S3::Bucket'], (buck: Bucket) => {
+        console.log('umm');
+        BucketPolicy.Bucket(buck).linkTo(pol);
+      });
+    });
+  }
+
   public readonly policyDocument: PolicyDocument;
 
   constructor(scope: Construct, id: string, props?: BucketPolicyProps, links?: ILinkable[]) {
     super(scope, id, 'AWS::S3::BucketPolicy');
 
-    this.makeLinkable('AWS::S3::BucketPolicy');
+    this.makeLinkableAs('AWS::S3::BucketPolicy');
 
-    const bucketLink = this.addLink(new LinkRelationship(['AWS::S3::Bucket'], props?.bucket));
-    this.addProperty('BucketName', new DerivedProperty(bucketLink, (l) => (l as Bucket).ref));
+    this.addProperty('BucketName', new ScalarProperty(props?.bucketName));
     this.policyDocument = new PolicyDocument(this, 'PolicyDocument');
     this.addProperty('PolicyDocument', new ScalarProperty(this.policyDocument));
 
@@ -82,7 +97,7 @@ export class PolicyDocument extends Construct implements IPolicyDocument, IRende
 
   constructor(scope: Construct, id: string) {
     super(scope, id);
-    this.makeLinkable('@aws-cdk/iam:PolicyDocument');
+    this.makeLinkableAs('@aws-cdk/iam:PolicyDocument');
   }
 
   public render() {
@@ -118,10 +133,9 @@ export interface PolicyStatementProps {
 }
 
 export class PolicyStatement implements ILinkable, IRenderable {
-  public linkTargets: string[] = ['@aws-cdk/iam:PolicyDocument'];
+  public linksTo: string[] = ['@aws-cdk/iam:PolicyDocument'];
 
   constructor(private readonly props?: PolicyStatementProps) {
-
     // FIXME: This is duplicated with 'linkTo'
     if (props?.policyDocument) {
       props.policyDocument.addStatement(this);

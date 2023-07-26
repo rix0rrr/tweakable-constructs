@@ -1,9 +1,9 @@
-//#region -c imports
+//#region -c demo imports
 import { Bucket, BucketPolicy, Construct, ILinkable, PolicyStatement, Resource, Root, Scope } from "./cdkv3";
 //#endregion
 
 /**
- * # Introduction
+ * ## Introduction
  * 
  * A different way of initializing constructs that combines setting resource properties
  * via values passed at resource construction time, and "modifiers" passed to constructs
@@ -21,20 +21,133 @@ import { Bucket, BucketPolicy, Construct, ILinkable, PolicyStatement, Resource, 
 
 /**
  * 
- * ## App1
+ * ## App0 - properties and explicit rooting
  * 
- * This creates a bucket without any properties. All properties are set via "modifiers".
+ * Everything is explicit, and initialization is done via properties.
  * 
- * The BucketPolicy is implicitly linked.
+ * `Root.with` is a bit of syntactic sugar -- it creates a construct root, calls a callback
+ * on it, then returns it.
+ */
+function app0() {
+  return Root.with((root) => {
+
+    /**
+     * Bucket creation is done purely via setting properties.
+     */
+    const bucket = new Bucket(root, 'Bucket', {
+      bucketName: 'MyBucket',
+      tags: [{ key: 'CostCenter', value: '1234' }],
+    })
+
+    /**
+     * Create a BucketPolicy and associate it with the bucket.
+     * 
+     * The association only
+     * exists at the CloudFormation level -- right now we don't have (need) knowledge
+     * that the BucketName -> Bucket link implies a relationship.
+     */
+    const pol = new BucketPolicy(bucket, 'BucketPolicy', {
+      bucketName: bucket.ref,
+    });
+
+    /**
+     * Add a statement to a policy. Note that we opt for a declaration of a new
+     * object that links to another object, rather than a mutating statement
+     * (`policy.addStatement`). The mutation still happens (or rather, the
+     * linking does), but it's not part of the user-facing API.
+     *
+     * Should `PolicyStatement` be a construct itself? Does it need identity? Right
+     * now it is not a construct, and therefore breaks consistency a bit with the rest.
+     * If it were a construct we would need to come up with an id, and we could only
+     * create it in the context of a construct tree.
+     */
+    new PolicyStatement({
+      policyDocument: pol.policyDocument,
+      actions: ['s3:GetObject'],
+      principals: ['*'],
+    });
+  });
+}
+
+/**
+ * 
+ * ## App1 - Modifiers
+ * 
+ * We set properties not using properties, but using "modifiers" instead of
+ * "plain old properties". Modifiers are passed in an optional additional
+ * list argument.
+ * 
+ * Some notes:
+ * 
+ * - The `Bucket.Tag` operation adds a tag of the given name -- we used to define
+ *   the entire `tags` array, now we are adding inidivual elements to it.
+ * - For the `BucketPolicy`, instead of having the user pluck out
+ *   the bucket's name to pass to the policy we provider the `BucketPolicy.Bucket` modifier
+ *   that knows how to do this. The user can freely use the constructor property, the
+ *   string modifier or the Bucket modifier.
+ * 
+ * In the API I've currently chosen, the construct parameters look like 
+ * `(scope, id, props, modifiers)`, so we do see the empty dictionary
+ * argument `{}` dangling around in the argument list.
+ * 
+ * Modifiers could have been classes `new Bucket.BucketName()`, `new Bucket.Tag()`, but
+ * I've chosen to make them functions to cut down on syntactic noise.
+ * 
+ * It should be an error if a modification doesn't apply to anything.
  */
 function app1() {
+  return Root.with((root) => {
+    const bucket = new Bucket(root, 'Bucket', {}, [
+      Bucket.BucketName('MyBucket'),
+      Bucket.Tag('CostCenter', '1234'),
+    ]);
+
+    const pol = new BucketPolicy(bucket, 'BucketPolicy', {}, [
+      // This is possible:
+      // BucketPolicy.BucketName(bucket.bucketName),
+
+      // But this is preferred:
+      BucketPolicy.Bucket(bucket),
+    ]);
+
+    new PolicyStatement({
+      policyDocument: pol.policyDocument,
+      actions: ['s3:GetObject'],
+      principals: ['*'],
+    });
+  });
+}
+
+/**
+ * 
+ * ## App2 - constructs themselves can be passed as modifiers
+ * 
+ * Constructs themselves can be passed in the same place as modifiers; if they
+ * are aware of links they can have to constructs, they can be pass as modifiers
+ * to other constructs and will link up to them automatically.
+ * 
+ * Right now, BucketPolicy is not aware that it can link to a Bucket, so it needs
+ * some help to declare a link to a Bucket and turn that into a BucketName. If it was
+ * aware (either because we enhance the L1 level or we add an L2 level class with
+ * that capability), we could just declare a BucketPolicy as a modifier to a Bucket
+ * directly.
+ * 
+ */
+function app2() {
   const root = new Root();
 
   new Bucket(root, 'Bucket', {}, [
     Bucket.BucketName('MyBucket'),
     Bucket.Tag('CostCenter', '1234'),
 
+    // Scope.FLOATING roots the BucketPolicy under the first construct it is
+    // being applied to in the construct tree.
     new BucketPolicy(Scope.FLOATING, 'BucketPolicy', {}, [
+      // If BucketPolicy were aware that it could be linked to a Bucket, the
+      // following modifier would be unncessary. We need a modifier which, when
+      // applied to the BucketPolicy, makes that policy linkable to a Bucket. 
+      BucketPolicy.AutomaticBucketName(),
+
       new PolicyStatement({
         actions: ['s3:GetObject'],
         principals: ['*'],
@@ -45,51 +158,76 @@ function app1() {
 }
 
 /**
- * app2: create a bucket with tweaks, create an explicitly linked BucketPolicy
+ * ### Musings on syntax and consistency
  * 
- * The PolicyStatement is still implicitly linked
+ * Since we are stating that:
+ * 
+ * ```ts
+ * new ConstructA(scope1, id1, {}, [
+ *   new ConstructB(scope2, id2, {
+ *     xyz: 'xyz',
+ *   }),
+ * ]);
+ * ```
+ * 
+ * is equivalent to:
+ * 
+ * ```ts
+ * const a = new ConstructA(scope1, id1);
+ * new ConstructB(scope2, id2, {
+ *   constructA: a,
+ *   xyz: 'xyz',
+ * });
+ * ```
+ * 
+ * I.e., passing `constructA: a` is equivalent to nesting inside the declaration of `a`,
+ * this should perhaps for consistency's sake also be the case for simple modifiers:
+ * 
+ * ```ts
+ * new Bucket(scope, id, {
+ *   bucketName: 'xyz',
+ * });
+ * 
+ * // is equivalent to
+ * 
+ * new Bucket(scope, id, {}, [
+ *   Bucket.BucketName({
+ *     bucketName: 'xyz',
+ *   })
+ * ]);
+ * 
+ * // is equivalent to
+ * 
+ * const bucket = new Bucket(scope, id);
+ * Bucket.BucketName({
+ *   bucket: bucket,
+ *   bucketName: 'xyz',
+ * });
+ * ```
+ * 
+ * However, in the common case this would force:
+ * 
+ * ```ts
+ * new Bucket(scope, id, {}, [
+ *   Bucket.BucketName({
+ *     bucketName: 'xyz',
+ *   })
+ * ]);
+ * 
+ * // instead of 
+ * 
+ * new Bucket(scope, id, {}, [
+ *   Bucket.BucketName('xyz'),
+ * ]);
+ * ```
+ * 
+ * Whereas I feel that the second syntax here would be terser and therefore nicer.
  */
-function app2() {
-  const root = new Root();
-
-  const bucket = new Bucket(root, 'Bucket', {}, [
-    Bucket.BucketName('MyBucket'),
-    Bucket.Tag('CostCenter', '1234'),
-  ]);
-
-  new BucketPolicy(bucket, 'BucketPolicy', {
-    bucket: bucket,
-  }, [
-    new PolicyStatement({
-      actions: ['s3:GetObject'],
-      principals: ['*'],
-    }),
-  ]);
-
-  return root;
-}
 
 /**
- * app3: Everything is explicitly linked
+ * 
+ * ## App3 - abstraction
  */
-function app3() {
-  return Root.with(root => {
-    const bucket = new Bucket(root, 'Bucket', {}, [
-      Bucket.BucketName('MyBucket'),
-      Bucket.Tag('CostCenter', '1234'),
-    ]);
-
-    const bucketPol = new BucketPolicy(bucket, 'BucketPolicy', {
-      bucket: bucket,
-    });
-
-    new PolicyStatement({
-      policyDocument: bucketPol.policyDocument,
-      actions: ['s3:GetObject'],
-      principals: ['*'],
-    });
-  });
-}
 
 function fancyBucket(scope: Construct, id: string, tweaks?: ILinkable[]) {
   return new Bucket(scope, id, {}, [
@@ -110,7 +248,7 @@ function fancyBucket(scope: Construct, id: string, tweaks?: ILinkable[]) {
 /**
  * app4: A function that returns "a bucket with an associated policy" that can be tweaked
  */
-function app4() {
+function app3() {
   return Root.with(root => 
     fancyBucket(root, 'Bucket', [
       new PolicyStatement({
@@ -123,7 +261,7 @@ function app4() {
 /**
  * app5: Use 'fancyBucket' but use an explicit link operation
  */
-function app5() {
+function app4() {
   return Root.with(root => {
     const b = fancyBucket(root, 'Bucket');
     b.link([
@@ -135,7 +273,12 @@ function app5() {
   });
 }
 
-const apps = [app1, app2, app3, app4, app5];
+/**
+ * ## Validation
+ * 
+ * This bit of code asserts that all the examples given above are equivalent.
+ */
+const apps = [app0, app1, app2, app3, app4];
 const rendered = apps.map((a) => [a.name, JSON.stringify(Resource.renderAll(a()), undefined, 2)]);
 
 for (const [fn, r] of rendered) {
@@ -143,5 +286,6 @@ for (const [fn, r] of rendered) {
     console.log(rendered[0][0], rendered[0][1]);
     console.log(fn, r);
     process.exitCode = 1;
+    break;
   }
 }

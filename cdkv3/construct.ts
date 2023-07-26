@@ -1,11 +1,14 @@
-export class Construct {
+type LinkHandler = (target: any, here: any) => void;
+
+export class Construct implements ILinkable {
   public static isConstruct(x: any): x is Construct {
     return x instanceof Construct;
   }
 
-  public readonly linkableTargets: string[] = [];
+  public readonly linksAs: string[] = [];
   public readonly creationStack: StackTrace;
   public readonly children: Record<string, Construct> = {};
+  public readonly linkHandlers: Record<string, LinkHandler[]> = {};
 
   constructor(private _scope: Construct | undefined, public readonly id: string | undefined) {
     if ((id === null) !== (_scope === null)) {
@@ -25,9 +28,31 @@ export class Construct {
     return this._scope;
   }
 
-  protected makeLinkable(...targets: string[]) {
-    this.linkableTargets.push(...targets);
+  protected makeLinkableAs(...targets: string[]) {
+    this.linksAs.push(...targets);
   }
+
+  public get linksTo(): string[] {
+    return Object.keys(this.linkHandlers);
+  }
+
+  protected makeLinkableTo(targets: string[], cb: LinkHandler) {
+    for (const target of targets) {
+      if (!this.linkHandlers[target]) {
+        this.linkHandlers[target] = [];
+      }
+      this.linkHandlers[target].push(cb);
+    }
+  }
+
+  public linkTo(target: Construct): void {
+    for (const type of target.linksTo) {
+      for (const fn of this.linkHandlers[type] ?? []) {
+        fn(target, this);
+      }
+    }
+  }
+
 
   /**
    * Link linkables to the current construct tree
@@ -99,7 +124,7 @@ export class Root extends Construct {
  * An object that can be linked to a LinkTarget
  */
 export interface ILinkable {
-  readonly linkTargets: string[];
+  readonly linksTo: string[];
   linkTo(target: Construct): void;
 }
 
@@ -109,12 +134,12 @@ export interface ILinkable {
 export class Linkable {
   public static tryLink(linkable: ILinkable, target: Construct) {
     let result = false;
-    if (linkable.linkTargets.some(t => target.linkableTargets.includes(t))) {
+    if (linkable.linksTo.some(t => target.linksAs.includes(t))) {
       linkable.linkTo(target);
       result = true;
     }
     if (process.env.DEBUG) {
-      console.log(`${linkable} (${linkable.linkTargets.join(',')}?) -> ${target} (${target.linkableTargets.join(',')}!): ${result}`);
+      console.log(`${linkable} (${linkable.linksTo.join(',')}?) -> ${target} (${target.linksAs.join(',')}!): ${result}`);
     }
   }
 }
