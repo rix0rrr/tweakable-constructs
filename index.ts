@@ -242,11 +242,6 @@ function fancyBucket(scope: Construct, id: string, tweaks?: ILinkable[]) {
     Bucket.BucketName('MyBucket'),
     Bucket.Tag('CostCenter', '1234'),
 
-    // This example needed the introduction of `Scope.FLOATING`, otherwise there wouldn't be a
-    // way of comfortably combining Bucket and BucketPolicy together in a way that tweaks
-    // would apply to both (except perhaps explicit nesting).
-    // 
-    // This requires cognitive overhead and is a bit nasty.
     new BucketPolicy(Scope.FLOATING, 'BucketPolicy', {}, [
       BucketPolicy.AutomaticBucketName()
     ]),
@@ -256,7 +251,9 @@ function fancyBucket(scope: Construct, id: string, tweaks?: ILinkable[]) {
 }
 
 /**
- * app3: A function that returns "a bucket with an associated policy" that can be tweaked
+ * app3: use `fancyBucket` and apply a `PolicyStatement` to the compound
+ * resource (in fact it will apply to the `PolicyDocument` inside the compound
+ * resource).
  */
 function app3() {
   return Root.with(root => 
@@ -270,6 +267,10 @@ function app3() {
 
 /**
  * app4: Use 'fancyBucket' but use an explicit link operation
+ * 
+ * Basically the same as the previous example, but use the `x.link()`
+ * operation to apply the modifications. This is equivalent to passing
+ * the links at construction time.
  */
 function app4() {
   return Root.with(root => {
