@@ -1,6 +1,6 @@
 {
-    "demo": {
-        "url": "demo.html",
+    "index": {
+        "url": "index.html",
         "dependencies": [
             "cdkv3"
         ]
